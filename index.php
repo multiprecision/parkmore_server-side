@@ -2,50 +2,67 @@
 
 session_start();
 
+// indicate that we're sending json content
+header("Content-Type: application/json");
+
+// connect to database system
 $mysql_connection = mysqli_connect( "localhost", "root", "", "parkmore", "3306");
 
+// check if successful
 if (mysqli_connect_errno())
 {
     printf("Connect failed: %s\n", mysqli_connect_error());
 }
-
-$content = file_get_contents("php://input");
-
+// accept POST request
 if(strcasecmp($_SERVER["REQUEST_METHOD"], "POST") != 0)
 {
     return;
 }
- 
+
+// accept json
 $content_type = isset($_SERVER["CONTENT_TYPE"]) ? trim($_SERVER["CONTENT_TYPE"]) : "";
 
 if(strcasecmp($content_type, "application/json") != 0)
 {
     return;
 }
- 
+
+// get raw input
 $content = trim(file_get_contents("php://input"));
- 
+
+// parse it as json
 $decoded = json_decode($content, true);
 
 if(!is_array($decoded))
 {
-    $data = array("success" => false, "error_codes" => array("decoding_json_failed"));
-    echo json_encode($data);
+    $data = array("success" => false, "error_codes" => array("parsing_json_failed"));
+    print(json_encode($data));
     return;
 }
 
-header("Content-Type: application/json");
+// must include action field
+if (!array_key_exists("action", $decoded)) 
+{
+    return;
+}
 
 switch ($decoded["action"])
 {
     case "login":
+        if (!array_key_exists("email", $decoded) || !array_key_exists("email", $decoded))
+        {
+            $data = array("success" => false, "error_codes" => array("empty"));
+            print(json_encode($data));
+            return;
+        }
         $email_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["email"]));
         $password_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["password"]));
         $hashedsaltedpassword = hash("sha512", $email_input . $password_input);
         $result = mysqli_query($mysql_connection, "SELECT id, email, password_hash FROM user WHERE email='$email_input'");
+        // check for errors
         if ($result === false)
         {
-            echo(mysqli_error($mysql_connection));
+            print(mysqli_error($mysql_connection));
             return;
         }
         $row =  mysqli_fetch_assoc($result);
@@ -53,43 +70,66 @@ switch ($decoded["action"])
         mysqli_free_result($result);
         if($count == 1 && $row["password_hash"] == $hashedsaltedpassword)
         {
-            $_SESSION["user"] = $row["id"];
+            $_SESSION["user_id"] = $row["id"];
             $data = array("success" => true);
-            echo json_encode($data);
+            print(json_encode($data));
+            return;
         }
         else
         {
-            $data = array("success" => false, "error_codes" => array("wrong_login_info"));
-            echo json_encode($data);
-        }
-        break;
-    case "logout":
-        if(!isset($_SESSION["user"]))
-        {
-            $data = array("success" => false, "error_codes" => array("not_loggedin"));
-            echo json_encode($data);
+            $data = array("success" => false, "error_codes" => array("incorrect_login"));
+            print(json_encode($data));
             return;
         }
-        unset($_SESSION["user"]);
+        break;
+        
+    case "logout":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        unset($_SESSION["user_id"]);
+        // unset all of the session variables.
+        $_SESSION = array();
+        // delete the session cookie
+        if (ini_get("session.use_cookies"))
+        {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), "", time() - 42000, $params["path"], $params["domain"], $params["secure"], $params["httponly"]);
+        }
+        // destroy the session.
         session_destroy();
+        
         $data = array("success" => true);
-        echo json_encode($data);
+        print(json_encode($data));
         return;
         break;
+        
     case "register":
-        if(isset($_SESSION["user"])!="")
+        if(isset($_SESSION["user_id"]))
         {
-            throw new Exception("Already logged in.");
+            $data = array("success" => false, "error_codes" => array("already_logged_in"));
+            print(json_encode($data));
+            return;
         }
         $email_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["email"]));
         $password_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["password"]));
         $license_plate_number_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["license_plate_number"]));
         $name_input = trim(mysqli_real_escape_string($mysql_connection, $decoded["name"]));
 
-        if(!filter_var($email_input, FILTER_VALIDATE_EMAIL) || strlen($password_input) < 4 || strlen($password_input) > 255)
+        if(!filter_var($email_input, FILTER_VALIDATE_EMAIL))
         {
-            $data = array("success" => false, "error_codes" => array("invalid_data"));
-            echo json_encode($data);
+            $data = array("success" => false, "error_codes" => array("invalid_email_address"));
+            print(json_encode($data));
+            return;
+        }
+        if(strlen($password_input) < 4 || strlen($password_input) > 255)
+        {
+            $data = array("success" => false, "error_codes" => array("invalid_password_length"));
+            print(json_encode($data));
             return;
         }
         $hashedsaltedpassword = hash("sha512", $email_input . $password_input);
@@ -99,7 +139,7 @@ switch ($decoded["action"])
 
         if($result === false)
         {
-            echo(mysqli_error($mysql_connection));
+            print(mysqli_error($mysql_connection));
             return;
         }
         
@@ -109,20 +149,59 @@ switch ($decoded["action"])
             if(mysqli_query($mysql_connection, "INSERT INTO user(email, password_hash, license_plate_number, name, create_time) VALUES('$email_input', '$hashedsaltedpassword', '$license_plate_number_input', '$name_input', now());"))
             {
                 $data = array("success" => true);
-                echo json_encode($data);
+                print(json_encode($data));
+                return;
             }
             else
             {
-                echo(mysqli_error($mysql_connection));
+                print(mysqli_error($mysql_connection));
+                return;
             }
         }
         else
         {
             $data = array("success" => false, "error_codes" => array("email_taken"));
-            echo json_encode($data);
+            print(json_encode($data));
+            return;
         }
         break;
-    // TODO
+        
+    case "get_user_data":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        $user_id = $_SESSION["user_id"];
+        $result = mysqli_query($mysql_connection, "SELECT name, license_plate_number FROM user WHERE id='$user_id'");
+        // check for errors
+        if ($result === false)
+        {
+            print(mysqli_error($mysql_connection));
+            return;
+        }
+        $row =  mysqli_fetch_assoc($result);
+        $count = mysqli_num_rows($result);
+        mysqli_free_result($result);
+        if($count == 1)
+        {
+            $name = $row["name"];
+            $license_plate_number = $row["license_plate_number"];
+            $data = array("success" => true, "name" => $name, "license_plate_number" => $license_plate_number);
+            print(json_encode($data));
+            return;
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("not_found"));
+            print(json_encode($data));
+            return;
+        }
+        $data = array("success" => true, "error_codes" => array("not_logged_in"));
+        print(json_encode($data));
+        return;
+        break;
     case "reserve":
         break;
     case "extend":
