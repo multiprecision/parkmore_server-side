@@ -32,8 +32,8 @@ DROP TABLE IF EXISTS `reservation`;
 CREATE TABLE `reservation` (
   `id` bigint(20) UNSIGNED NOT NULL,
   `user_id` bigint(20) UNSIGNED NOT NULL,
-  `start` datetime DEFAULT NULL,
-  `end` datetime DEFAULT NULL,
+  `start_utc` datetime DEFAULT NULL,
+  `end_utc` datetime DEFAULT NULL,
   `state` int(11) DEFAULT NULL,
   `timestamp` datetime DEFAULT NULL
   CONSTRAINT `reservation_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)

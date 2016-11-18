@@ -1,5 +1,6 @@
 <?php
 
+date_default_timezone_set('UTC');
 session_start();
 
 // indicate that we're sending json content
@@ -202,7 +203,91 @@ switch ($decoded["action"])
         print(json_encode($data));
         return;
         break;
+        
     case "reserve":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        $user_id = $_SESSION["user_id"];
+        $start_utc = trim(mysqli_real_escape_string($mysql_connection, $decoded["start_utc"]));
+        $end_utc = trim(mysqli_real_escape_string($mysql_connection, $decoded["end_utc"]));
+        $format = "Y-m-d H:i:s";
+        $ds = DateTime::createFromFormat($format, $decoded["start_utc"]);
+        if (!($ds && $ds->format($format) == $decoded["start_utc"]))
+        {
+            $data = array("success" => false, "error_codes" => array("invalid_date"));
+            print(json_encode($data));
+            return;
+        }
+        else
+        {
+            // accept 10 minutes interval
+            $test = $ds->format("i:s");
+            if (!(strcmp($test, "00:00") == 0 || strcmp($test, "10:00") == 0 || strcmp($test, "20:00") == 0 || strcmp($test, "30:00") == 0 || strcmp($test, "40:00") == 0 || strcmp($test, "50:00") == 0))
+            {
+                $data = array("success" => false, "error_codes" => array("invalid_date_2_start"));
+                print(json_encode($data));
+                return;
+            }
+        }
+        $de = DateTime::createFromFormat($format, $decoded["end_utc"]);
+        if (!($de && $de->format($format) == $decoded["end_utc"]))
+        {
+            $data = array("success" => false, "error_codes" => array("invalid_date"));
+            print(json_encode($data));
+            return;
+        }
+        else
+        {
+            // accept 10 minutes interval
+            $test = $de->format("i:s");
+            if (!(strcmp($test, "00:00") == 0 || strcmp($test, "10:00") == 0 || strcmp($test, "20:00") == 0 || strcmp($test, "30:00") == 0 || strcmp($test, "40:00") == 0 || strcmp($test, "50:00") == 0))
+            {
+                $data = array("success" => false, "error_codes" => array("invalid_date_2_end"));
+                print(json_encode($data));
+                return;
+            }
+        }
+        if ($de <= $ds)
+        {
+        	$a =  $de->format($format);
+        	$b =  $ds->format($format);
+            $data = array("success" => false, "error_codes" => array("end_time_is_less_than_or_equal_start_time"));
+            print(json_encode($data));
+            return;
+        }
+        $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' and end_utc >= '$end_utc';";
+        $result = mysqli_query($mysql_connection, $query);
+        // check for errors
+        if ($result === false)
+        {
+            print(mysqli_error($mysql_connection));
+            return;
+        }
+        $count = mysqli_num_rows($result); // return value should be one if input was correct
+        if ($count > 0)
+        {
+            $data = array("success" => false, "error_codes" => array("parking_spot_unavailable"));
+            print(json_encode($data));
+            return;
+        }
+        $query = "INSERT INTO reservation(user_id, start_utc, end_utc, timestamp) VALUES('$user_id', '$start_utc', '$end_utc', now());";
+        if(mysqli_query($mysql_connection, $query))
+        {
+            $data = array("success" => true);
+            print(json_encode($data));
+            return;
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("mysql_error"));
+            print(mysqli_error($mysql_connection));
+            print(json_encode($data));
+            return;
+        }
         break;
     case "extend":
         break;
