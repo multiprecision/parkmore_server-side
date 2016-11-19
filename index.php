@@ -1,5 +1,15 @@
 <?php
 
+// state
+// 0 = initial state
+// 1 = reserved
+// 2 = checked_in
+// 3 = checked_out
+// 4 = canceled
+// 5 = auto_cancelled_not_checked_in
+// 6 = auto_cancelled_checked_in
+
+
 date_default_timezone_set('UTC');
 session_start();
 
@@ -63,7 +73,6 @@ switch ($decoded["action"])
         // check for errors
         if ($result === false)
         {
-            print(mysqli_error($mysql_connection));
             return;
         }
         $row =  mysqli_fetch_assoc($result);
@@ -140,7 +149,6 @@ switch ($decoded["action"])
 
         if($result === false)
         {
-            print(mysqli_error($mysql_connection));
             return;
         }
         
@@ -155,7 +163,6 @@ switch ($decoded["action"])
             }
             else
             {
-                print(mysqli_error($mysql_connection));
                 return;
             }
         }
@@ -179,7 +186,6 @@ switch ($decoded["action"])
         // check for errors
         if ($result === false)
         {
-            print(mysqli_error($mysql_connection));
             return;
         }
         $row =  mysqli_fetch_assoc($result);
@@ -218,7 +224,7 @@ switch ($decoded["action"])
         $ds = DateTime::createFromFormat($format, $decoded["start_utc"]);
         if (!($ds && $ds->format($format) == $decoded["start_utc"]))
         {
-            $data = array("success" => false, "error_codes" => array("invalid_date"));
+            $data = array("success" => false, "error_codes" => array("invalid_date_start"));
             print(json_encode($data));
             return;
         }
@@ -228,7 +234,7 @@ switch ($decoded["action"])
             $test = $ds->format("i:s");
             if (!(strcmp($test, "00:00") == 0 || strcmp($test, "10:00") == 0 || strcmp($test, "20:00") == 0 || strcmp($test, "30:00") == 0 || strcmp($test, "40:00") == 0 || strcmp($test, "50:00") == 0))
             {
-                $data = array("success" => false, "error_codes" => array("invalid_date_2_start"));
+                $data = array("success" => false, "error_codes" => array("invalid_date_value_start"));
                 print(json_encode($data));
                 return;
             }
@@ -236,7 +242,7 @@ switch ($decoded["action"])
         $de = DateTime::createFromFormat($format, $decoded["end_utc"]);
         if (!($de && $de->format($format) == $decoded["end_utc"]))
         {
-            $data = array("success" => false, "error_codes" => array("invalid_date"));
+            $data = array("success" => false, "error_codes" => array("invalid_date_end"));
             print(json_encode($data));
             return;
         }
@@ -246,25 +252,42 @@ switch ($decoded["action"])
             $test = $de->format("i:s");
             if (!(strcmp($test, "00:00") == 0 || strcmp($test, "10:00") == 0 || strcmp($test, "20:00") == 0 || strcmp($test, "30:00") == 0 || strcmp($test, "40:00") == 0 || strcmp($test, "50:00") == 0))
             {
-                $data = array("success" => false, "error_codes" => array("invalid_date_2_end"));
+                $data = array("success" => false, "error_codes" => array("invalid_date_value_end"));
                 print(json_encode($data));
                 return;
             }
         }
         if ($de <= $ds)
         {
-        	$a =  $de->format($format);
-        	$b =  $ds->format($format);
+            $a =  $de->format($format);
+            $b =  $ds->format($format);
             $data = array("success" => false, "error_codes" => array("end_time_is_less_than_or_equal_start_time"));
             print(json_encode($data));
             return;
         }
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state > 0 AND state < 3;";
+        
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count != 0)
+        {
+            $data = array("success" => false, "error_codes" => array("you_already_made_a_reservation"));
+            print(json_encode($data));
+            return;
+        }
+        
         $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' and end_utc >= '$end_utc';";
         $result = mysqli_query($mysql_connection, $query);
         // check for errors
         if ($result === false)
         {
-            print(mysqli_error($mysql_connection));
             return;
         }
         $count = mysqli_num_rows($result); // return value should be one if input was correct
@@ -284,14 +307,230 @@ switch ($decoded["action"])
         else
         {
             $data = array("success" => false, "error_codes" => array("mysql_error"));
-            print(mysqli_error($mysql_connection));
             print(json_encode($data));
             return;
         }
         break;
     case "extend":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $user_id = $_SESSION["user_id"];
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state = 2;";
+        
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count == 1)
+        {
+            $row =  mysqli_fetch_assoc($result);
+            $id = $row["id"];
+            $start_utc = $row["start_utc"];
+            
+            $end_utc = trim(mysqli_real_escape_string($mysql_connection, $decoded["end_utc"]));
+            $format = "Y-m-d H:i:s";
+            
+            $de = DateTime::createFromFormat($format, $decoded["end_utc"]);
+            if (!($de && $de->format($format) == $decoded["end_utc"]))
+            {
+                $data = array("success" => false, "error_codes" => array("invalid_date_end"));
+                print(json_encode($data));
+                return;
+            }
+            else
+            {
+                // accept 10 minutes interval
+                $test = $de->format("i:s");
+                if (!(strcmp($test, "00:00") == 0 || strcmp($test, "10:00") == 0 || strcmp($test, "20:00") == 0 || strcmp($test, "30:00") == 0 || strcmp($test, "40:00") == 0 || strcmp($test, "50:00") == 0))
+                {
+                    $data = array("success" => false, "error_codes" => array("invalid_date_value_end"));
+                    print(json_encode($data));
+                    return;
+                }
+            }
+            $ds = DateTime::createFromFormat($format, $start_utc);
+            if ($de <= $ds)
+            {
+                $a =  $de->format($format);
+                $b =  $ds->format($format);
+                $data = array("success" => false, "error_codes" => array("end_time_is_less_than_or_equal_start_time"));
+                print(json_encode($data));
+                return;
+            }
+            
+            
+            $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' and end_utc >= '$end_utc';";
+            $result = mysqli_query($mysql_connection, $query);
+            if ($result === false)
+            {
+                return;
+            }
+            $count = mysqli_num_rows($result); // return value should be one if input was correct
+            if ($count > 0)
+            {
+                $data = array("success" => false, "error_codes" => array("parking_spot_unavailable"));
+                print(json_encode($data));
+                return;
+            }
+            if(mysqli_query($mysql_connection, "UPDATE reservation SET end_utc = '$end_utc' WHERE id = '$id';"))
+            {
+                $data = array("success" => true);
+                print(json_encode($data));
+                return;
+            }
+            else
+            {
+                $data = array("success" => false, "error_codes" => array("mysql_error"));
+                print(json_encode($data));
+                return;
+            }
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("you_have_not_checked_in"));
+            print(json_encode($data));
+            return;
+        }
         break;
+        
     case "cancel":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $user_id = $_SESSION["user_id"];
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state = 1;";
+        
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count == 1)
+        {
+            $row =  mysqli_fetch_assoc($result);
+            $id = $row["id"];
+            if(mysqli_query($mysql_connection, "UPDATE reservation SET state = 4 WHERE id = '$id';"))
+            {
+                $data = array("success" => true);
+                print(json_encode($data));
+                return;
+            }
+            else
+            {
+                return;
+            }
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("you_have_not_made_a_reservation"));
+            print(json_encode($data));
+            return;
+        }
+        
+        break;
+    case "checkin":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $user_id = $_SESSION["user_id"];
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state = 1;";
+        
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count == 1)
+        {
+            $row =  mysqli_fetch_assoc($result);
+            $id = $row["id"];
+            if(mysqli_query($mysql_connection, "UPDATE reservation SET state = 2 WHERE id = '$id';"))
+            {
+                $data = array("success" => true);
+                print(json_encode($data));
+                return;
+            }
+            else
+            {
+                return;
+            }
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("you_have_not_made_a_reservation"));
+            print(json_encode($data));
+            return;
+        }
+        
+        break;
+    case "checkout":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $user_id = $_SESSION["user_id"];
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state = 2;";
+        
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count == 1)
+        {
+            $row =  mysqli_fetch_assoc($result);
+            $id = $row["id"];
+            if(mysqli_query($mysql_connection, "UPDATE reservation SET state = 3 WHERE id = '$id';"))
+            {
+                $data = array("success" => true);
+                print(json_encode($data));
+                return;
+            }
+            else
+            {
+                return;
+            }
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("you_have_not_checked_in"));
+            print(json_encode($data));
+            return;
+        }
+        
         break;
     default:
         break;
