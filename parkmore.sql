@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: 127.0.0.1
--- Generation Time: Nov 16, 2016 at 09:49 PM
+-- Generation Time: Nov 19, 2016 at 09:01 PM
 -- Server version: 5.7.14
 -- PHP Version: 5.6.25
 
@@ -28,14 +28,13 @@ USE `parkmore`;
 -- Table structure for table `reservation`
 --
 
-DROP TABLE IF EXISTS `reservation`;
 CREATE TABLE `reservation` (
   `id` bigint(20) UNSIGNED NOT NULL,
   `user_id` bigint(20) UNSIGNED NOT NULL,
-  `start_utc` datetime DEFAULT NULL,
-  `end_utc` datetime DEFAULT NULL,
-  `state` int(11) DEFAULT NULL,
-  `timestamp` datetime DEFAULT NULL
+  `start_utc` datetime NOT NULL,
+  `end_utc` datetime NOT NULL,
+  `state` int(11) NOT NULL DEFAULT '0',
+  `timestamp` datetime DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT `reservation_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `user` (`id`)
 ) ENGINE=MyISAM DEFAULT CHARSET=utf8mb4;
 
@@ -45,7 +44,6 @@ CREATE TABLE `reservation` (
 -- Table structure for table `user`
 --
 
-DROP TABLE IF EXISTS `user`;
 CREATE TABLE `user` (
   `id` bigint(20) UNSIGNED NOT NULL,
   `email` varchar(255) DEFAULT NULL,
@@ -80,12 +78,23 @@ ALTER TABLE `user`
 -- AUTO_INCREMENT for table `reservation`
 --
 ALTER TABLE `reservation`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=26;
 --
 -- AUTO_INCREMENT for table `user`
 --
 ALTER TABLE `user`
-  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT;
+  MODIFY `id` bigint(20) UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=12;
+DELIMITER $$
+--
+-- Events
+--
+CREATE DEFINER=`root`@`localhost` EVENT `autocancel_reservation` ON SCHEDULE EVERY 10 MINUTE STARTS '2000-01-01 00:00:00' ON COMPLETION NOT PRESERVE ENABLE DO BEGIN
+   UPDATE parkmore.reservation SET state = 5 WHERE state = 1 AND end_utc >= now();
+   UPDATE parkmore.reservation SET state = 6 WHERE state = 2 AND end_utc >= now();
+END$$
+
+DELIMITER ;
+
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
 /*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;
