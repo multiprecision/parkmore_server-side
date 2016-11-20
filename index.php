@@ -258,8 +258,6 @@ switch ($decoded["action"])
         }
         if ($de <= $ds)
         {
-            $a =  $de->format($format);
-            $b =  $ds->format($format);
             $data = array("success" => false, "error_codes" => array("end_time_is_less_than_or_equal_start_time"));
             print(json_encode($data));
             return;
@@ -272,7 +270,7 @@ switch ($decoded["action"])
             return;
         }
         
-        $limit = $de;
+        $limit = clone $de;
         $limit->modify("+1 day");
             
         if ($de > $limit)
@@ -382,7 +380,8 @@ switch ($decoded["action"])
                 return;
             }
             
-            $limit = $de->modify("+1 day");
+            $limit = clone $de;
+            $limit->modify("+1 day");
             
             if ($de > $limit)
             {
