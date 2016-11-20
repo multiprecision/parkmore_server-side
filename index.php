@@ -9,7 +9,6 @@
 // 5 = auto_cancelled_not_checked_in
 // 6 = auto_cancelled_checked_in
 
-
 date_default_timezone_set('UTC');
 session_start();
 
@@ -266,6 +265,23 @@ switch ($decoded["action"])
             return;
         }
         
+        if ($ds <= new DateTime("now"))
+        {
+            $data = array("success" => false, "error_codes" => array("start_time_must_be_greater_than_now"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $limit = $de;
+        $limit->modify("+1 day");
+            
+        if ($de > $limit)
+        {
+            $data = array("success" => false, "error_codes" => array("max_1_day"));
+            print(json_encode($data));
+            return;
+        }
+        
         $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state > 0 AND state < 3;";
         
         $result = mysqli_query($mysql_connection, $query);
@@ -283,7 +299,7 @@ switch ($decoded["action"])
             return;
         }
         
-        $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' and end_utc >= '$end_utc';";
+        $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state < 1 AND STATE > 2;";
         $result = mysqli_query($mysql_connection, $query);
         // check for errors
         if ($result === false)
@@ -297,7 +313,7 @@ switch ($decoded["action"])
             print(json_encode($data));
             return;
         }
-        $query = "INSERT INTO reservation(user_id, start_utc, end_utc, timestamp) VALUES('$user_id', '$start_utc', '$end_utc', now());";
+        $query = "INSERT INTO reservation(user_id, start_utc, end_utc, state, timestamp) VALUES('$user_id', '$start_utc', '$end_utc', 1, now());";
         if(mysqli_query($mysql_connection, $query))
         {
             $data = array("success" => true);
@@ -361,15 +377,21 @@ switch ($decoded["action"])
             $ds = DateTime::createFromFormat($format, $start_utc);
             if ($de <= $ds)
             {
-                $a =  $de->format($format);
-                $b =  $ds->format($format);
                 $data = array("success" => false, "error_codes" => array("end_time_is_less_than_or_equal_start_time"));
                 print(json_encode($data));
                 return;
             }
             
+            $limit = $de->modify("+1 day");
             
-            $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' and end_utc >= '$end_utc';";
+            if ($de > $limit)
+            {
+                $data = array("success" => false, "error_codes" => array("max_1_day"));
+                print(json_encode($data));
+                return;
+            }
+            
+            $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state < 1 AND STATE > 2;";
             $result = mysqli_query($mysql_connection, $query);
             if ($result === false)
             {
@@ -456,7 +478,7 @@ switch ($decoded["action"])
         
         $user_id = $_SESSION["user_id"];
         
-        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state = 1;";
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' AND state > 0 AND state < 3;";
         
         $result = mysqli_query($mysql_connection, $query);
 
@@ -470,6 +492,26 @@ switch ($decoded["action"])
         {
             $row =  mysqli_fetch_assoc($result);
             $id = $row["id"];
+            $state = $row["state"];
+            $start_utc = $row["start_utc"];
+            
+            $format = "Y-m-d H:i:s";
+            $ds = DateTime::createFromFormat($format, $start_utc);
+            
+            if (new DateTime("now") < $ds)
+            {
+                $data = array("success" => false, "error_codes" => array("it_s_not_time_yet"));
+                print(json_encode($data));
+                return;
+            }
+            
+            if ($state == 2)
+            {
+                $data = array("success" => false, "error_codes" => array("already_checked_in"));
+                print(json_encode($data));
+                return;
+            }
+            
             if(mysqli_query($mysql_connection, "UPDATE reservation SET state = 2 WHERE id = '$id';"))
             {
                 $data = array("success" => true);
@@ -532,6 +574,44 @@ switch ($decoded["action"])
         }
         
         break;
+    case "get_reservation_data":
+        if(!isset($_SESSION["user_id"]))
+        {
+            $data = array("success" => false, "error_codes" => array("not_logged_in"));
+            print(json_encode($data));
+            return;
+        }
+        
+        $user_id = $_SESSION["user_id"];
+        
+        $query = "SELECT * FROM reservation WHERE user_id = '$user_id' ORDER BY id DESC LIMIT 1";
+        $result = mysqli_query($mysql_connection, $query);
+
+        if($result === false)
+        {
+            return;
+        }
+        
+        $count = mysqli_num_rows($result);
+        if($count == 1)
+        {
+            $row =  mysqli_fetch_assoc($result);
+            $reservation_id = $row["id"];
+            $start_utc = $row["start_utc"];
+            $end_utc = $row["end_utc"];
+            $timestamp = $row["timestamp"];
+            $state = $row["state"];
+            $data = array("success" => true, "reservation_id" => $reservation_id, "start_utc" => $start_utc, "end_utc" => $end_utc, "timestamp" => $timestamp, "state" => $state);
+            print(json_encode($data));
+            return;
+        }
+        else
+        {
+            $data = array("success" => false, "error_codes" => array("not_found"));
+            print(json_encode($data));
+            return;
+        }
+        
     default:
         break;
 }
