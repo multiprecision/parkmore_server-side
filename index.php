@@ -270,12 +270,12 @@ switch ($decoded["action"])
             return;
         }
         
-        $limit = clone $de;
+        $limit = new DateTime("now");
         $limit->modify("+1 day");
             
         if ($de > $limit)
         {
-            $data = array("success" => false, "error_codes" => array("max_1_day"));
+            $data = array("success" => false, "error_codes" => array("end_time_max_1_day_from_now"));
             print(json_encode($data));
             return;
         }
@@ -380,12 +380,12 @@ switch ($decoded["action"])
                 return;
             }
             
-            $limit = clone $de;
+            $limit = new DateTime("now");
             $limit->modify("+1 day");
             
             if ($de > $limit)
             {
-                $data = array("success" => false, "error_codes" => array("max_1_day"));
+                $data = array("success" => false, "error_codes" => array("end_time_max_1_day_from_now"));
                 print(json_encode($data));
                 return;
             }
