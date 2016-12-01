@@ -8,6 +8,16 @@
 // 4 = canceled
 // 5 = auto_cancelled_not_checked_in
 // 6 = auto_cancelled_checked_in
+<?php
+
+// state
+// 0 = initial state
+// 1 = reserved
+// 2 = checked_in
+// 3 = checked_out
+// 4 = canceled
+// 5 = auto_cancelled_not_checked_in
+// 6 = auto_cancelled_checked_in
 
 date_default_timezone_set('UTC');
 session_start();
@@ -297,7 +307,7 @@ switch ($decoded["action"])
             return;
         }
         
-        $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state < 1 AND STATE > 2;";
+        $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state > 0 AND state < 3;";
         $result = mysqli_query($mysql_connection, $query);
         // check for errors
         if ($result === false)
@@ -390,7 +400,7 @@ switch ($decoded["action"])
                 return;
             }
             
-            $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state < 1 AND STATE > 2;";
+            $query = "SELECT * FROM reservation WHERE start_utc <= '$end_utc' AND end_utc >= '$end_utc' AND state > 0 AND state < 3;";
             $result = mysqli_query($mysql_connection, $query);
             if ($result === false)
             {
