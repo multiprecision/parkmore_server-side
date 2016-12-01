@@ -8,16 +8,6 @@
 // 4 = canceled
 // 5 = auto_cancelled_not_checked_in
 // 6 = auto_cancelled_checked_in
-<?php
-
-// state
-// 0 = initial state
-// 1 = reserved
-// 2 = checked_in
-// 3 = checked_out
-// 4 = canceled
-// 5 = auto_cancelled_not_checked_in
-// 6 = auto_cancelled_checked_in
 
 date_default_timezone_set('UTC');
 session_start();
